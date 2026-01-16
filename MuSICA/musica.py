@@ -21,6 +21,30 @@ i2s = machine.I2S(
     ibuf=2048
 )
 
+ # ------------------------------
+
+# FREQ TABLE AND LUT FOR SINE
+
+# ------------------------------
+
+FREQ_TABLE = {
+    'C':  [16.35, 32.70, 65.41, 130.81, 261.63, 523.25, 1046.50, 2093.00],
+    'C#': [17.32, 34.65, 69.30, 138.59, 277.18, 554.37, 1108.73, 2217.46],
+    'D':  [18.35, 36.71, 73.42, 146.83, 293.66, 587.33, 1174.66, 2349.32],
+    'D#': [19.45, 38.89, 77.78, 155.56, 311.13, 622.25, 1244.51, 2489.02],
+    'E':  [20.60, 41.20, 82.41, 164.81, 329.63, 659.25, 1318.51, 2637.02],
+    'F':  [21.83, 43.65, 87.31, 174.61, 349.23, 698.46, 1396.91, 2793.83],
+    'F#': [23.12, 46.25, 92.50, 185.00, 369.99, 739.99, 1479.98, 2959.96],
+    'G':  [24.50, 49.00, 98.00, 196.00, 392.00, 783.99, 1567.98, 3135.96],
+    'G#': [25.96, 51.91, 103.83, 207.65, 415.30, 830.61, 1661.22, 3322.44],
+    'A':  [27.50, 55.00, 110.00, 220.00, 440.00, 880.00, 1760.00, 3520.00],
+    'A#': [29.14, 58.27, 116.54, 233.08, 466.16, 932.32, 1864.64, 3729.31],
+    'B':  [30.87, 61.74, 123.47, 246.94, 493.88, 987.76, 1975.52, 3951.04]
+}
+
+
+SINE_LUT = [math.sin(2 * math.pi * i / 256) for i in range(256)] 
+
 # wave generators
 
 def gen_square(phase):
@@ -46,6 +70,16 @@ def parse_to_ticks(mml):
     tempo, octave, length, vol, wave = 140, 4, 8, 32, 0
     ticks = []
     
+    FLAT_MAP = {
+        'C-': ('B', -1),  # C- is B, but lower octave
+        'D-': ('C#', 0),
+        'E-': ('D#', 0),
+        'F-': ('E', 0),
+        'G-': ('F#', 0),
+        'A-': ('G#', 0),
+        'B-': ('A#', 0)
+    }
+    
     def add_event(f, v, w, dur_ms):
         num_ticks = int((dur_ms / 1000) * TICK_RATE)
         for _ in range(max(1, num_ticks)):
@@ -54,36 +88,73 @@ def parse_to_ticks(mml):
     i = 0
     while i < len(mml):
         ch = mml[i].lower()
+        
         if ch in "cdefgab":
             note = ch.upper()
             i += 1
-            if i < len(mml) and mml[i] in "+#": note += "#"; i += 1
-            freq = FREQ_TABLE[note][octave]
+            modifier = ""
+            
+            # Sprawdzamy czy jest krzyżyk, plus lub bemol
+            if i < len(mml) and mml[i] in "+#-":
+                modifier = mml[i]
+                i += 1
+            
+            current_octave = octave
+            
+            # Obsługa modyfikatorów
+            if modifier in "+#":
+                note_to_find = note + "#"
+                # Specyficzny przypadek: E# = F, B# = C (następna oktawa)
+                if note == 'E': note_to_find = 'F'
+                if note == 'B': 
+                    note_to_find = 'C'
+                    current_octave += 1
+            elif modifier == "-":
+                # Korzystamy z mapy bemoli
+                note_to_find, octave_offset = FLAT_MAP[note + "-"]
+                current_octave += octave_offset
+            else:
+                note_to_find = note
+
+            # Zabezpieczenie przed wyjściem poza zakres oktaw (0-7)
+            current_octave = max(0, min(7, current_octave))
+            
+            freq = FREQ_TABLE[note_to_find][current_octave]
             dur = (60000 / tempo * 4 / length)
             add_event(freq, vol, wave, dur)
+            
         elif ch == "r":
-            i += 1; add_event(0, 0, wave, (60000 / tempo * 4 / length))
+            i += 1
+            dur = (60000 / tempo * 4 / length)
+            add_event(0, 0, wave, dur)
+            
+        # ... [reszta funkcji: t, v, @, o, <, >, l pozostaje bez zmian] ...
         elif ch == "t":
-            i += 1; n = ""; 
+            i += 1; n = ""
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
-            tempo = int(n)
+            tempo = int(n) if n else tempo
         elif ch == "v":
-            i += 1; n = ""; 
+            i += 1; n = ""
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
-            vol = int(n)
+            vol = int(n) if n else vol
         elif ch == "@":
-            i += 1; n = "";
+            i += 1; n = ""
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
-            wave = int(n)
+            wave = int(n) if n else wave
         elif ch == "o":
-            i += 1; octave = int(mml[i]); i += 1
+            i += 1
+            if i < len(mml) and mml[i].isdigit():
+                octave = int(mml[i])
+                i += 1
         elif ch == "<": octave -= 1; i += 1
         elif ch == ">": octave += 1; i += 1
         elif ch == "l":
-            i += 1; n = "";
+            i += 1; n = ""
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
-            length = int(n)
-        else: i += 1
+            length = int(n) if n else length
+        else:
+            i += 1
+            
     return ticks
 
 # arpeggio playback
@@ -150,10 +221,12 @@ def play_arp(tracks_mml):
 # @0: square, @1: saw, @2: triangle, @3: noise
 
 tracks = [
-    "t80 @0 l8 v16 c e g > c <",   # Square
-    "t80 @1 l8 v16 r4 a4 c4 r4",   # Saw
-    "t80 @2 l8 v16 c  g  a  c",    # Triangle
-    "t80 @3 l8 v16 r4 e4 r4 r4"    # Noise
+    "t120 @0 o5 c4 e4 g4",
+    #"t120 @0 o4 [ceg]4 [dfa]4",
+    "t120 @0 o3 c4 r4 a4 g4",  # Prosty bas
+    #"t120 @0 o5 v16 [egb]4. [dfa]8"
 ]
 
 play_arp(tracks)
+
+
