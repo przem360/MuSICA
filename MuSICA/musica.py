@@ -67,91 +67,109 @@ WAVE_MAP = {0: gen_square, 1: gen_saw, 2: gen_tri, 3: gen_noise, 4: gen_sine}
 # parser
 
 def parse_to_ticks(mml):
-    tempo, octave, length, vol, wave = 140, 4, 8, 32, 0
+    print("Got mml string: "+mml)
+    tempo, octave, length, vol, wave = 140, 4, 4, 32, 0
     ticks = []
     
     FLAT_MAP = {
-        'C-': ('B', -1),  # C- is B, but lower octave
-        'D-': ('C#', 0),
-        'E-': ('D#', 0),
-        'F-': ('E', 0),
-        'G-': ('F#', 0),
-        'A-': ('G#', 0),
+        'C-': ('B', -1), 'D-': ('C#', 0), 'E-': ('D#', 0),
+        'F-': ('E', 0), 'G-': ('F#', 0), 'A-': ('G#', 0),
         'B-': ('A#', 0)
     }
     
     def add_event(f, v, w, dur_ms):
-        num_ticks = int((dur_ms / 1000) * TICK_RATE)
-        for _ in range(max(1, num_ticks)):
-            ticks.append((f, v / 64.0, w))
+        # ! Using round instead of int to avoid timing issues
+        num_ticks = max(1, round((dur_ms / 1000) * TICK_RATE))
+        for _ in range(num_ticks):
+            # For the purpose of future chord implementation
+            ticks.append(([f], v / 64.0, w))
 
     i = 0
     while i < len(mml):
         ch = mml[i].lower()
         
+        if ch.isspace():
+            i += 1
+            continue
+
         if ch in "cdefgab":
             note = ch.upper()
+            print("Found note: "+note)
             i += 1
-            modifier = ""
             
-            # Sprawdzamy czy jest krzyżyk, plus lub bemol
+            modifier = "" # do we even need this? see below
             if i < len(mml) and mml[i] in "+#-":
                 modifier = mml[i]
+                print("Found modifier: "+modifier)
                 i += 1
+            else:
+                modifier = "!" # This is hack :D Well, micropython is stubborn and keeps the value if trying to set it to empty string.
+            
+            current_note_dur = length
+            if i < len(mml) and mml[i].isdigit():
+                num_str = ""
+                while i < len(mml) and mml[i].isdigit():
+                    num_str += mml[i]
+                    i += 1
+                print("Found rhythmic value of "+num_str)
+                current_note_dur = int(num_str)
             
             current_octave = octave
+            note_to_find = note
             
-            # Obsługa modyfikatorów
             if modifier in "+#":
-                note_to_find = note + "#"
-                # Specyficzny przypadek: E# = F, B# = C (następna oktawa)
                 if note == 'E': note_to_find = 'F'
-                if note == 'B': 
+                elif note == 'B': 
                     note_to_find = 'C'
                     current_octave += 1
+                else: note_to_find = note + "#"
             elif modifier == "-":
-                # Korzystamy z mapy bemoli
                 note_to_find, octave_offset = FLAT_MAP[note + "-"]
                 current_octave += octave_offset
-            else:
-                note_to_find = note
 
-            # Zabezpieczenie przed wyjściem poza zakres oktaw (0-7)
             current_octave = max(0, min(7, current_octave))
-            
+            print("note_to_find: "+str(note_to_find))
             freq = FREQ_TABLE[note_to_find][current_octave]
-            dur = (60000 / tempo * 4 / length)
+            dur = (60000 / tempo * 4 / current_note_dur)
             add_event(freq, vol, wave, dur)
-            
+            continue
+
         elif ch == "r":
             i += 1
-            dur = (60000 / tempo * 4 / length)
-            add_event(0, 0, wave, dur)
+            current_rest_dur = length
+            if i < len(mml) and mml[i].isdigit():
+                num_str = ""
+                while i < len(mml) and mml[i].isdigit():
+                    num_str += mml[i]
+                    i += 1
+                current_rest_dur = int(num_str)
             
-        # ... [reszta funkcji: t, v, @, o, <, >, l pozostaje bez zmian] ...
+            dur = (60000 / tempo * 4 / current_rest_dur)
+            add_event(0, 0, wave, dur)
+            continue
+
         elif ch == "t":
             i += 1; n = ""
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
-            tempo = int(n) if n else tempo
+            if n: tempo = int(n)
         elif ch == "v":
             i += 1; n = ""
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
-            vol = int(n) if n else vol
+            if n: vol = int(n)
         elif ch == "@":
             i += 1; n = ""
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
-            wave = int(n) if n else wave
+            if n: wave = int(n)
         elif ch == "o":
             i += 1
             if i < len(mml) and mml[i].isdigit():
-                octave = int(mml[i])
-                i += 1
+                octave = int(mml[i]); i += 1
         elif ch == "<": octave -= 1; i += 1
         elif ch == ">": octave += 1; i += 1
         elif ch == "l":
             i += 1; n = ""
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
-            length = int(n) if n else length
+            if n: length = int(n)
         else:
             i += 1
             
@@ -176,28 +194,31 @@ class ArpEngine:
         self.arp_step = 0
 
     def get_sample(self):
-        # make sure that Arpeggio picks only available tracks
         self.arp_step = (self.arp_step + 1) % self.num_tracks
-        
         track = self.tracks[self.arp_step]
         
         if self.current_tick >= len(track):
             return 0
 
-        freq, vol, wave_type = track[self.current_tick]
-        if freq == 0: 
+        # freq_data to teraz LISTA, np. [440.0] lub [261.6, 329.6, 392.0]
+        freq_data, vol, wave_type = track[self.current_tick]
+        
+        # Jeśli lista zawiera 0 (pauza) lub jest pusta
+        if not freq_data or freq_data[0] == 0: 
             return 0
 
-        # Update channels phase
+        # Select frequenct
+        # If it is a chorg - arp it, if note, just take first value
+        if len(freq_data) > 1:
+            idx = (time.ticks_ms() // 4) % len(freq_data)
+            freq = freq_data[idx]
+        else:
+            freq = freq_data[0]
+
         self.phases[self.arp_step] = (self.phases[self.arp_step] + (freq / SAMPLE_RATE)) % 1.0
         
-        # Selecting generator
         wave_func = WAVE_MAP.get(wave_type, gen_square)
         
-        # There can be less than 4 tracks, 
-        # so we need to compensate volume. In 1 track arpeggio 
-        # we will have 100% time, in 4-tracks 25%.
-        # Div by number of tracks to avoid clipping.
         return (wave_func(self.phases[self.arp_step]) * vol) / self.num_tracks
 
     def next_tick(self):
@@ -221,7 +242,7 @@ def play_arp(tracks_mml):
 # @0: square, @1: saw, @2: triangle, @3: noise
 
 tracks = [
-    "t120 @0 o5 c4 e4 g4",
+    "t120 @0 o5 c#4 c4 e4 g4",
     #"t120 @0 o4 [ceg]4 [dfa]4",
     "t120 @0 o3 c4 r4 a4 g4",  # Prosty bas
     #"t120 @0 o5 v16 [egb]4. [dfa]8"
