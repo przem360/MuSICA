@@ -5,6 +5,9 @@ import math
 
 DEBUG = 1
 
+
+DEBUG = 1
+
 SAMPLE_RATE = 22050 
 BUFFER = 512
 TICK_RATE = 50       
@@ -83,6 +86,20 @@ def parse_to_ticks(mml):
             res = FLAT_MAP.get(n_char + "-")
             if res: t_note, off = res; t_oct += off
         return FREQ_TABLE.get(t_note, [0]*8)[max(0, min(7, t_oct))]
+    FLAT_MAP = {'C-': ('B', -1), 'D-': ('C#', 0), 'E-': ('D#', 0), 'F-': ('E', 0), 'G-': ('F#', 0), 'A-': ('G#', 0), 'B-': ('A#', 0)}
+
+    def get_note_freq(n_char, m_mod, cur_oct):
+        n_char = n_char.upper()
+        t_note = n_char
+        t_oct = cur_oct
+        if m_mod in "+#":
+            if n_char == 'E': t_note = 'F'
+            elif n_char == 'B': t_note = 'C'; t_oct += 1
+            else: t_note = n_char + "#"
+        elif m_mod == "-":
+            res = FLAT_MAP.get(n_char + "-")
+            if res: t_note, off = res; t_oct += off
+        return FREQ_TABLE.get(t_note, [0]*8)[max(0, min(7, t_oct))]
 
     i = 0
     while i < len(mml):
@@ -143,22 +160,44 @@ def parse_to_ticks(mml):
             dur = (60000 / tempo * 4 / curr_len)
             for _ in range(max(1, round((dur / 1000) * TICK_RATE))):
                 ticks.append(([0], 0, wave))
+            i += 1
+            curr_len = length
+            if i < len(mml) and mml[i].isdigit():
+                num = ""
+                while i < len(mml) and mml[i].isdigit():
+                    num += mml[i]; i += 1
+                curr_len = int(num)
+            dur = (60000 / tempo * 4 / curr_len)
+            for _ in range(max(1, round((dur / 1000) * TICK_RATE))):
+                ticks.append(([0], 0, wave))
         elif ch == "t":
             i += 1; n = ""; 
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
+            if n: tempo = int(n)
             if n: tempo = int(n)
         elif ch == "v":
             i += 1; n = ""; 
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
             if n: vol = int(n)
+            if n: vol = int(n)
         elif ch == "o":
+            i += 1
+            if i < len(mml) and mml[i].isdigit(): octave = int(mml[i]); i += 1
             i += 1
             if i < len(mml) and mml[i].isdigit(): octave = int(mml[i]); i += 1
         elif ch == "<": octave -= 1; i += 1
         elif ch == ">": octave += 1; i += 1
         elif ch == "l":
             i += 1; n = ""; 
+            i += 1; n = ""; 
             while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
+            if n: length = int(n)
+        elif ch == "@":
+            i += 1; n = ""; 
+            while i < len(mml) and mml[i].isdigit(): n += mml[i]; i += 1
+            if n: wave = int(n)
+        else:
+            i += 1
             if n: length = int(n)
         elif ch == "@":
             i += 1; n = ""; 
@@ -198,7 +237,20 @@ class ArpEngine:
         
         # Jeśli lista zawiera 0 (pauza) lub jest pusta
         if not freq_data or freq_data[0] == 0: 
+        # freq_data to teraz LISTA, np. [440.0] lub [261.6, 329.6, 392.0]
+        freq_data, vol, wave_type = track[self.current_tick]
+        
+        # Jeśli lista zawiera 0 (pauza) lub jest pusta
+        if not freq_data or freq_data[0] == 0: 
             return 0
+
+        # Select frequenct
+        # If it is a chorg - arp it, if note, just take first value
+        if len(freq_data) > 1:
+            idx = (time.ticks_ms() // 4) % len(freq_data)
+            freq = freq_data[idx]
+        else:
+            freq = freq_data[0]
 
         # Select frequenct
         # If it is a chorg - arp it, if note, just take first value
