@@ -22,6 +22,12 @@ i2s = machine.I2S(
     ibuf=2048
 )
 
+# console log function
+
+def c_log(txt: str):
+    if DEBUG>0:
+        print(txt)
+
 # Frequenct table by RealClearwave
 # https://github.com/echo-lalia/MicroHydra-Apps/tree/main/app-source/mmlPlay
 # also LUT for sine
@@ -63,9 +69,10 @@ def gen_noise(phase):
 
 WAVE_MAP = {0: gen_square, 1: gen_saw, 2: gen_tri, 3: gen_noise, 4: gen_sine}
 
-# # parser
+# parser
 
 def parse_to_ticks(mml):
+    c_log("MML: "+ mml)
     tempo, octave, length, vol, wave = 140, 4, 4, 32, 0
     ticks = []
     
@@ -96,7 +103,7 @@ def parse_to_ticks(mml):
             is_chord = (ch == "[")
             
             if is_chord:
-                #c_log("Found chord")
+                c_log("Found chord")
                 i += 1
                 while i < len(mml) and mml[i] != "]":
                     if mml[i].lower() in "cdefgab":
@@ -104,18 +111,18 @@ def parse_to_ticks(mml):
                         m = "!" # This is hack :D Well, micropython is stubborn and keeps the value if trying to set it to empty string.
                         if i < len(mml) and mml[i] in "+#-":
                             m = mml[i]; i += 1
-                            #c_log("Found chord modifier: "+ m)
+                            c_log("Found chord modifier: "+ m)
                         chord_freqs.append(get_note_freq(n, m, octave))
                     else: i += 1
                 if i < len(mml) and mml[i] == "]": i += 1
             else:
                 n = ch
-                #c_log("Found note: " + n)
+                c_log("Found note: " + n)
                 i += 1
                 m = "!" # This is hack :D Well, micropython is stubborn and keeps the value if trying to set it to empty string.
                 if i < len(mml) and mml[i] in "+#-":
                     m = mml[i]; i += 1
-                    #c_log("Found note modifier: "+ m)
+                    c_log("Found note modifier: "+ m)
                 chord_freqs.append(get_note_freq(n, m, octave))
 
             curr_len = length
@@ -123,7 +130,7 @@ def parse_to_ticks(mml):
                 num = ""
                 while i < len(mml) and mml[i].isdigit():
                     num += mml[i]; i += 1
-                #c_log("Found rhythmic value of "+num)
+                c_log("Found rhythmic value of "+num)
                 curr_len = int(num)
             
             dur = (60000 / tempo * 4 / curr_len)
@@ -168,7 +175,7 @@ def parse_to_ticks(mml):
             i += 1
     return ticks
 
-# # arpeggio playback
+# arpeggio playback
 
 class ArpEngine:
     def __init__(self, tracks_mml):
@@ -231,18 +238,15 @@ def play_arp(tracks_mml):
             i2s.write(buf)
         engine.next_tick()
 
-
-
-
 # test
 # @0: square, @1: saw, @2: triangle, @3: noise
 
-#tracks = [
-#    "t120 @0 o5 c#4 c4 e4 g4",
-#    #"t120 @0 o4 [ceg]4 [dfa]4",
-#    #"t120 @0 o3 c4 r4 a4 g4",  # Prosty bas
-#    "t120 @0 o5 [egb]4 [dfa]4"
-#]
+tracks = [
+    "t120 @0 o5 c#4 c4 e4 g4",
+    #"t120 @0 o4 [ceg]4 [dfa]4",
+    #"t120 @0 o3 c4 r4 a4 g4",  # Prosty bas
+    "t120 @0 o5 [egb]4 [dfa]4"
+]
 
-#play_arp(tracks)
+play_arp(tracks)
 
