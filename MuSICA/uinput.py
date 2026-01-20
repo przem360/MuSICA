@@ -15,8 +15,6 @@ INPUT = userinput.UserInput()
 _CHAR_WIDTH = const(8)
 _CHAR_HEIGHT = const(8)
 
-BOARD_SIZE = cfg.screen_h
-
 letters = [chr(i) for i in range(ord('a'), ord('z') + 1)]
 
 def get_char():
