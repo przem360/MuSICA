@@ -48,6 +48,9 @@ def draw_text(x, y, txt, col=COLOR_FG):
     DISPLAY.text(txt, x, y, col)
     # WARNING: text does not refresh the display
 
+def draw_rect(x, y, w, h, col=COLOR_FG, fill=False):
+    DISPLAY.rect(x, y, w, h, col, fill=fill)
+
 def draw_text_ln(x: int, y: int, txt: str, clr=COLOR_FG):
     lines = txt.split("\n")
     cy = y

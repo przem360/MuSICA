@@ -63,7 +63,7 @@ def gen_noise(phase):
 
 WAVE_MAP = {0: gen_square, 1: gen_saw, 2: gen_tri, 3: gen_noise, 4: gen_sine}
 
-# # parser
+# parser
 
 def parse_to_ticks(mml):
     tempo, octave, length, vol, wave = 140, 4, 4, 32, 0
@@ -92,6 +92,7 @@ def parse_to_ticks(mml):
             continue
 
         if ch in "cdefgab" or ch == "[":
+            dotted = False
             chord_freqs = []
             is_chord = (ch == "[")
             
@@ -122,11 +123,20 @@ def parse_to_ticks(mml):
             if i < len(mml) and mml[i].isdigit():
                 num = ""
                 while i < len(mml) and mml[i].isdigit():
-                    num += mml[i]; i += 1
+                    num += mml[i]
+                    i += 1
                 #c_log("Found rhythmic value of "+num)
                 curr_len = int(num)
             
+            if i < len(mml) and mml[i] == ".":
+                dotted = True
+                i += 1
+            
             dur = (60000 / tempo * 4 / curr_len)
+
+            if dotted:
+                dur *= 1.5
+                
             num_ticks = max(1, round((dur / 1000) * TICK_RATE))
             for _ in range(num_ticks):
                 ticks.append((chord_freqs, vol / 64.0, wave))

@@ -6,9 +6,9 @@ except ImportError:
     from apps.musica.helpers import SCRIPT_DIR, file_exists, get_first_line, write_txt_file, clean_log, log, list_files, exit_prg
 
 try:
-    from .draw import _DISPLAY_HEIGHT, clear_screen, draw_text, refresh_screen, CH_W, CH_H, MAX_COL, MAX_ROW
+    from .draw import _DISPLAY_HEIGHT, clear_screen, draw_text, draw_rect, refresh_screen, CH_W, CH_H, MAX_COL, MAX_ROW
 except ImportError:
-    from apps.musica.draw import _DISPLAY_HEIGHT, MAX_ROW, clear_screen, draw_text, refresh_screen, CH_W, CH_H, MAX_COL, MAX_ROW
+    from apps.musica.draw import _DISPLAY_HEIGHT, MAX_ROW, clear_screen, draw_text, draw_rect, refresh_screen, CH_W, CH_H, MAX_COL, MAX_ROW
 
 try:
     from .uinput import get_char
@@ -20,7 +20,9 @@ try:
 except ImportError:
     from apps.musica.musica import play_arp
 
+app_info = ["Nocturne", "0.01a"]
 RECENT_FILES_LIST = "recent.txt"
+song_loaded = False
 
 def select_from_list(items):
     recent_exists = file_exists(SCRIPT_DIR + "/" + RECENT_FILES_LIST)
@@ -103,43 +105,63 @@ def load_song(filename="/songs/song.mml"):
                         tracks[num] = value
                     except ValueError:
                         pass
-
+                        
     # sort by number
     ordered_tracks = [tracks[n] for n in sorted(tracks)]
-
+    song_loaded = True
     return title, composer, ordered_tracks
 
+def main_menu():
+    clear_screen()
+    draw_text(6,4,app_info[0]+" (version: "+app_info[1]+")")
+    draw_text(6,16, "[L] Load song.")
+    draw_text(6,28, "[Q] Quit.")
+    draw_rect(4,2,204,38)
+    refresh_screen()
+    while True:
+        key = get_char()
+        if key in ("Q", "q"):
+            return 0
+        elif key in ("L", "l"):
+            return 1
+
+def play_screen():
+    clear_screen()
+    draw_text(4,4,app_info[0]+" (version: "+app_info[1]+")")
+    draw_text(4,16, "Playing...")
+    draw_rect(2,2,204,24)
 
 def main():
     LINE_SPACING = 4
     clean_log()
-    #log("Start")
-    #refresh_screen()
-    song_list = list_files("songs", "mml")
-    selected = select_from_list(song_list)
-    write_txt_file(RECENT_FILES_LIST, selected)
-    title, composer, tracks = load_song("/songs/"+selected)
-    log("Tracks:\n{}".format(tracks))
-    clear_screen()
-    draw_text(0,4,"MuSICA test.")
+    while True:
+        clear_screen()
+        action = main_menu()
+        if action == 0:
+            exit_prg()
+        else:
+            song_list = list_files("songs", "mml")
+            selected = select_from_list(song_list)
+            write_txt_file(RECENT_FILES_LIST, selected)
+            title, composer, tracks = load_song("/songs/"+selected)
+            #log("Tracks:\n{}".format(tracks))
+            play_screen()
 
-    if title:
-        draw_text(0,12+LINE_SPACING, "TITLE   : {}".format(title))
-        #log("TITLE   : {}".format(title))
-    if composer:
-        draw_text(0,20+LINE_SPACING, "COMPOSER: {}".format(composer))
-        #log("COMPOSER: {}".format(composer))
-    
-    refresh_screen()
+            if title:
+                draw_text(0,26+LINE_SPACING, "TITLE   : {}".format(title))
+            if composer:
+                draw_text(0,34+LINE_SPACING, "COMPOSER: {}".format(composer))
+        
+            refresh_screen()
 
-    if not tracks:
-        draw_text(0,12+LINE_SPACING, "No tracks found")
-        log("No tracks found!")
-        refresh_screen()
-        time.sleep(3)
-        return
-    
-    play_arp(tracks)
+            if not tracks:
+                draw_text(0,12+LINE_SPACING, "No tracks found")
+                #log("No tracks found!")
+                refresh_screen()
+                time.sleep(3)
+                return
+        
+            play_arp(tracks)
 
 
 
